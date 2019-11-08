@@ -2,14 +2,11 @@ package transport
 
 import (
 	"bufio"
-	"io"
 	"net"
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rsocket/rsocket-go/internal/common"
 	"github.com/rsocket/rsocket-go/internal/framing"
-	"github.com/rsocket/rsocket-go/logger"
 )
 
 type tcpConn struct {
@@ -28,39 +25,7 @@ func (p *tcpConn) SetDeadline(deadline time.Time) error {
 }
 
 func (p *tcpConn) Read() (f framing.Frame, err error) {
-	raw, err := p.decoder.Read()
-	if err == io.EOF {
-		return
-	}
-	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
-		return
-	}
-	h := framing.ParseFrameHeader(raw)
-	bf := common.NewByteBuff()
-	_, err = bf.Write(raw[framing.HeaderLen:])
-	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
-		return
-	}
-	base := framing.NewBaseFrame(h, bf)
-	if p.counter != nil && base.IsResumable() {
-		p.counter.incrReadBytes(base.Len())
-	}
-	f, err = framing.NewFromBase(base)
-	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
-		return
-	}
-	err = f.Validate()
-	if err != nil {
-		err = errors.Wrap(err, "read frame failed")
-		return
-	}
-	if logger.IsDebugEnabled() {
-		logger.Debugf("<--- rcv: %s\n", f)
-	}
-	return
+	return readFromDecoder(p.counter, p.decoder)
 }
 
 func (p *tcpConn) Flush() (err error) {
@@ -72,28 +37,7 @@ func (p *tcpConn) Flush() (err error) {
 }
 
 func (p *tcpConn) Write(frame framing.Frame) (err error) {
-	size := frame.Len()
-	if p.counter != nil && frame.IsResumable() {
-		p.counter.incrWriteBytes(size)
-	}
-	_, err = common.NewUint24(size).WriteTo(p.writer)
-	if err != nil {
-		err = errors.Wrap(err, "write frame failed")
-		return
-	}
-	var debugStr string
-	if logger.IsDebugEnabled() {
-		debugStr = frame.String()
-	}
-	_, err = frame.WriteTo(p.writer)
-	if err != nil {
-		err = errors.Wrap(err, "write frame failed")
-		return
-	}
-	if logger.IsDebugEnabled() {
-		logger.Debugf("---> snd: %s\n", debugStr)
-	}
-	return
+	return writeTo(p.counter, frame, p.writer)
 }
 
 func (p *tcpConn) Close() error {

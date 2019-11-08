@@ -5,10 +5,7 @@ import (
 	"crypto/tls"
 	"io"
 	"net"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 
 	"github.com/pkg/errors"
 )
@@ -54,17 +51,6 @@ func (p *tcpServerTransport) Listen(ctx context.Context, notifier chan<- struct{
 }
 
 func (p *tcpServerTransport) listen(ctx context.Context) (err error) {
-	// Remove unix socket file before exit.
-	if p.network == schemaUNIX {
-		// Monitor signal of current process and unlink unix socket file.
-		go func(sock string) {
-			c := make(chan os.Signal, 1)
-			signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-			<-c
-			_ = p.Close()
-		}(p.addr)
-	}
-
 	stop := make(chan struct{})
 	ctx, cancel := context.WithCancel(ctx)
 	go func(ctx context.Context, stop chan struct{}) {
@@ -87,12 +73,11 @@ func (p *tcpServerTransport) listen(ctx context.Context) (err error) {
 			err = errors.Wrap(err, "accept next conn failed")
 			break
 		}
-		// Dispatch raw conn.
-		go func(ctx context.Context, rawConn net.Conn) {
-			conn := newTCPRConnection(rawConn)
-			tp := newTransportClient(conn)
+		tp := newTransportClient(newTCPRConnection(c))
+		// Dispatch transport.
+		go func(ctx context.Context, tp *Transport) {
 			p.acceptor(ctx, tp)
-		}(ctx, c)
+		}(ctx, tp)
 	}
 	cancel()
 	<-stop

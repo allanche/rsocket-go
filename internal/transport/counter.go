@@ -10,20 +10,20 @@ type Counter struct {
 }
 
 // ReadBytes returns the number of bytes that have been read.
-func (p Counter) ReadBytes() uint64 {
+func (p *Counter) ReadBytes() uint64 {
 	return p.r.Load()
 }
 
 // WriteBytes returns the number of bytes that have been written.
-func (p Counter) WriteBytes() uint64 {
+func (p *Counter) WriteBytes() uint64 {
 	return p.w.Load()
 }
 
-func (p Counter) incrWriteBytes(n int) {
+func (p *Counter) incrWriteBytes(n int) {
 	p.w.Add(uint64(n))
 }
 
-func (p Counter) incrReadBytes(n int) {
+func (p *Counter) incrReadBytes(n int) {
 	p.r.Add(uint64(n))
 }
 
